@@ -1,5 +1,7 @@
 # 应用保险箱 AppVault
 
+[简体中文](README.md) | [English](README.en.md)
+
 > Hide any macOS app in place — invisible and unlaunchable until you authenticate with Touch ID.
 
 macOS 上的「应用保险箱」：把指定的 App **原地隐藏**，只有在保险箱里通过 Touch ID / 登录密码验证后才重新出现。
