@@ -93,3 +93,8 @@ open "/Applications/应用保险箱.app"
 ## 许可证
 
 [MIT](LICENSE) © 2026 Inkpaper-mz
+
+## Contributors
+
+- [Inkpaper-mz](https://github.com/Inkpaper-Mz) — author & maintainer
+- [DeepSeek](https://github.com/deepseek-ai) — AI pair programmer (architecture, implementation, debugging, docs)
