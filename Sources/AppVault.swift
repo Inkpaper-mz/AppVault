@@ -335,7 +335,7 @@ final class VaultModel: ObservableObject {
 
     // MARK: 身份验证
 
-    func authenticateAndUnlock() async {
+    func authenticate(reason: String) async -> Bool {
         busy = true
         defer { busy = false }
 
@@ -346,17 +346,21 @@ final class VaultModel: ObservableObject {
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
             message = "此设备无法进行身份验证，请先在系统中设置 Touch ID 或登录密码"
-            return
+            return false
         }
 
         let granted: Bool = await withCheckedContinuation { continuation in
             context.evaluatePolicy(.deviceOwnerAuthentication,
-                                   localizedReason: "验证身份后显示被隐藏的应用") { success, _ in
+                                   localizedReason: reason) { success, _ in
                 continuation.resume(returning: success)
             }
         }
 
-        if granted {
+        return granted
+    }
+
+    func authenticateAndUnlock() async {
+        if await authenticate(reason: "验证身份后显示被隐藏的应用") {
             unlockAll()
         } else {
             message = "验证未通过，应用保持隐藏"
@@ -365,6 +369,40 @@ final class VaultModel: ObservableObject {
 }
 
 // MARK: - 界面
+
+final class WindowAccess: ObservableObject {
+    @Published var authenticated = false
+}
+
+struct ProtectedContentView: View {
+    @ObservedObject var model: VaultModel
+    @StateObject private var access = WindowAccess()
+
+    var body: some View {
+        Group {
+            if access.authenticated {
+                ContentView(model: model)
+            } else {
+                VStack(spacing: 16) {
+                    Image(systemName: "lock.shield.fill").font(.system(size: 36))
+                    Text("应用保险箱").font(.title2.bold())
+                    Text("验证身份后查看和管理应用").foregroundStyle(.secondary)
+                    Button("验证身份") {
+                        Task {
+                            access.authenticated = await model.authenticate(reason: "验证身份后查看保险箱")
+                        }
+                    }
+                    .controlSize(.large)
+                    .disabled(model.busy)
+                    if !model.message.isEmpty && model.message.contains("无法进行身份验证") {
+                        Text(model.message).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 540, height: 220)
+            }
+        }
+    }
+}
 
 struct ContentView: View {
     @ObservedObject var model: VaultModel
@@ -481,6 +519,36 @@ struct ContentView: View {
     }
 }
 
+// Draw a full-height template image so the menu bar does not shrink a padded symbol.
+private func menuBarIcon() -> NSImage {
+    let image = NSImage(size: NSSize(width: 22, height: 22), flipped: false) { _ in
+        let transform = NSAffineTransform()
+        transform.translateX(by: 1.32, yBy: 1.32)
+        transform.scale(by: 0.88)
+        transform.concat()
+        let shield = NSBezierPath()
+        shield.move(to: NSPoint(x: 11, y: 21))
+        shield.line(to: NSPoint(x: 20, y: 17.5))
+        shield.line(to: NSPoint(x: 20, y: 10.5))
+        shield.curve(to: NSPoint(x: 11, y: 1), controlPoint1: NSPoint(x: 20, y: 5.5), controlPoint2: NSPoint(x: 15, y: 2.2))
+        shield.curve(to: NSPoint(x: 2, y: 10.5), controlPoint1: NSPoint(x: 7, y: 2.2), controlPoint2: NSPoint(x: 2, y: 5.5))
+        shield.line(to: NSPoint(x: 2, y: 17.5))
+        shield.close()
+        NSColor.black.setFill()
+        shield.fill()
+        NSGraphicsContext.current?.compositingOperation = .clear
+        let cutout = NSBezierPath(roundedRect: NSRect(x: 7.5, y: 7, width: 7, height: 5.5), xRadius: 1, yRadius: 1)
+        cutout.fill()
+        let shackle = NSBezierPath()
+        shackle.appendArc(withCenter: NSPoint(x: 11, y: 12.4), radius: 2.1, startAngle: 0, endAngle: 180)
+        shackle.lineWidth = 1.5
+        shackle.stroke()
+        return true
+    }
+    image.isTemplate = true
+    return image
+}
+
 // MARK: - 应用入口
 
 @main
@@ -489,11 +557,11 @@ struct AppVaultApp: App {
 
     var body: some Scene {
         WindowGroup("应用保险箱") {
-            ContentView(model: model)
+            ProtectedContentView(model: model)
                 .onAppear { model.refreshState() }
         }
 
-        MenuBarExtra("应用保险箱", systemImage: "lock.shield") {
+        MenuBarExtra {
             Button("打开窗口") {
                 NSApplication.shared.activate(ignoringOtherApps: true)
             }
@@ -504,6 +572,8 @@ struct AppVaultApp: App {
             }
             Divider()
             Button("退出") { NSApplication.shared.terminate(nil) }
+        } label: {
+            Image(nsImage: menuBarIcon())
         }
     }
 }
